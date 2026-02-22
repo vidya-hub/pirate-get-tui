@@ -1,90 +1,79 @@
 /* pirate-get TUI Stylesheet - Cyber Pirate Edition */
 
-/* ── Colors ── */
-$background: #050505;
-$surface: #0a0a0a;
-$panel: #111111;
-$text: #00ff41;      /* Matrix Green */
-$text-muted: #008f11;
-$text-dim: #003300;
-$accent: #00f3ff;    /* Cyber Cyan */
-$warning: #ffb700;
-$error: #ff0055;     /* Cyber Pink */
-$border: #003300;
-
 Screen {
-    background: $background;
-    color: $text;
+    background: #050505;
 }
 
 /* ── Header Area ── */
 
 Header {
-    background: $background;
-    color: $accent;
-    text-style: bold;
-    dock: top; 
+    background: #050505;
+    color: #00f3ff;
 }
 
 #search-bar {
     dock: top;
     height: 3;
-    background: $surface;
+    background: #0a0a0a;
     padding: 0 1;
     layout: horizontal;
-    border-bottom: solid $text-muted;
 }
 
 #search-input {
     width: 1fr;
     margin-right: 1;
-    background: $panel;
-    border: none;
-    color: $text;
-}
-#search-input:focus {
-    border: wide $accent;
+    background: #111111;
+    color: #00ff41;
 }
 
-#category-select, #sort-select {
+#search-input:focus {
+    border: wide #00f3ff;
+}
+
+#category-select {
     width: 20;
     margin-right: 1;
-    background: $panel;
-    border: none;
-    color: $text;
+    background: #111111;
+    color: #00ff41;
+}
+
+#sort-select {
+    width: 20;
+    background: #111111;
+    color: #00ff41;
 }
 
 /* ── Main Content ── */
 
 #main-content {
     height: 1fr;
-    background: $background;
+    background: #050505;
 }
 
 /* ── List View & Cards ── */
 
 ListView {
     height: 1fr;
-    scrollbar-color: $accent;
-    background: $background;
+    scrollbar-color: #00f3ff;
+    background: #050505;
 }
 
 .torrent-item {
     height: auto;
-    background: $surface;
-    border: heavy $border;
+    background: #0a0a0a;
+    border: heavy #003300;
     margin: 1 2;
     padding: 1 2;
-    color: $text;
+    color: #00ff41;
 }
 
 .torrent-item:hover {
-    background: $panel;
+    background: #111111;
 }
 
-ListView:focus > .torrent-item--highlighted {
-    border: heavy $accent;
-    background: $panel;
+ListView:focus > .torrent-item.-highlight {
+    border: heavy #00f3ff;
+    background: #111111;
 }
 
 .card-container {
@@ -93,7 +82,6 @@ ListView:focus > .torrent-item--highlighted {
 
 .card-header {
     height: 1;
-    justify-content: space-between;
     margin-bottom: 1;
 }
 
@@ -113,15 +101,15 @@ ListView:focus > .torrent-item--highlighted {
 }
 
 .detail-pill {
-    background: $text-dim;
-    color: $accent;
+    background: #003300;
+    color: #00f3ff;
     padding: 0 1;
     margin-right: 1;
 }
 
-.size { color: $accent; }
-.uploaded { color: $warning; }
-.category { color: $error; }
+.size { color: #00f3ff; }
+.uploaded { color: #ffb700; }
+.category { color: #ff0055; }
 
 HealthBar {
     height: 1;
@@ -134,11 +122,10 @@ HealthBar {
 #detail-panel {
     dock: bottom;
     height: 10;
-    background: $panel;
-    border-top: heavy $accent;
+    background: #111111;
+    border-top: heavy #00f3ff;
     padding: 1 2;
     display: none;
-    layer: overlay; /* Ensure it sits on top if needed, though dock handles layout */
 }
 
 #detail-panel.visible {
@@ -147,17 +134,16 @@ HealthBar {
 
 #detail-title {
     text-style: bold;
-    color: $accent;
-    background: $background;
+    color: #00f3ff;
+    background: #050505;
     padding: 0 1;
-    border-bottom: solid $text-muted;
     margin-bottom: 1;
     width: 100%;
     content-align: center middle;
 }
 
 #detail-info {
-    color: $text;
+    color: #00ff41;
 }
 
 /* ── Status Bar ── */
@@ -165,22 +151,37 @@ HealthBar {
 #status-bar {
     dock: bottom;
     height: 1;
-    background: $surface;
-    color: $text-muted;
+    background: #0a0a0a;
+    color: #008f11;
     padding: 0 1;
-    border-top: solid $border;
 }
 
 /* ── Loading / Empty ── */
 
 LoadingIndicator {
-    color: $accent;
+    color: #00f3ff;
 }
 
 #empty-state {
     width: 100%;
     height: 100%;
     content-align: center middle;
-    color: $text-muted;
+    color: #008f11;
     text-style: italic;
+}
+
+/* ── Footer ── */
+
+Footer {
+    background: #0a0a0a;
+    color: #00ff41;
+}
+
+Footer > .footer--key {
+    background: #003300;
+    color: #00f3ff;
+}
+
+Footer > .footer--description {
+    color: #00ff41;
 }
