@@ -3,6 +3,8 @@
 # pirate-get Installation Script
 # Installs pirate-get with all dependencies including TUI support
 #
+# Supports modern Python environments (PEP 668) using pipx
+#
 
 set -e
 
@@ -60,6 +62,15 @@ detect_os() {
     fi
 }
 
+# Check if environment is externally managed (PEP 668)
+is_externally_managed() {
+    local python_path=$(python3 -c "import sys; print(sys.prefix)")
+    if [ -f "$python_path/EXTERNALLY-MANAGED" ] || [ -f "/usr/lib/python3."*"/EXTERNALLY-MANAGED" ]; then
+        return 0
+    fi
+    return 1
+}
+
 # Install system dependencies
 install_system_deps() {
     local os=$(detect_os)
@@ -70,16 +81,18 @@ install_system_deps() {
         debian)
             print_step "Detected Debian/Ubuntu"
             sudo apt-get update -qq
-            sudo apt-get install -y python3 python3-pip python3-venv libxml2-dev libxslt1-dev
+            sudo apt-get install -y python3 python3-pip python3-venv python3-full pipx libxml2-dev libxslt1-dev
+            # Ensure pipx path is available
+            pipx ensurepath 2>/dev/null || true
             ;;
         redhat)
             print_step "Detected RHEL/CentOS/Fedora"
-            sudo dnf install -y python3 python3-pip python3-devel libxml2-devel libxslt-devel || \
+            sudo dnf install -y python3 python3-pip python3-devel pipx libxml2-devel libxslt-devel || \
             sudo yum install -y python3 python3-pip python3-devel libxml2-devel libxslt-devel
             ;;
         arch)
             print_step "Detected Arch Linux"
-            sudo pacman -Sy --noconfirm python python-pip libxml2 libxslt
+            sudo pacman -Sy --noconfirm python python-pip python-pipx libxml2 libxslt
             ;;
         macos)
             print_step "Detected macOS"
@@ -87,10 +100,11 @@ install_system_deps() {
                 print_warning "Homebrew not found. Installing..."
                 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
             fi
-            brew install python3 libxml2 libxslt
+            brew install python3 pipx libxml2 libxslt
+            pipx ensurepath 2>/dev/null || true
             ;;
         *)
-            print_warning "Unknown OS. Please ensure Python 3.4+ and pip are installed."
+            print_warning "Unknown OS. Please ensure Python 3.8+ and pipx are installed."
             ;;
     esac
 }
@@ -108,8 +122,8 @@ check_python() {
     local major=$(echo $python_version | cut -d. -f1)
     local minor=$(echo $python_version | cut -d. -f2)
     
-    if [ "$major" -lt 3 ] || ([ "$major" -eq 3 ] && [ "$minor" -lt 4 ]); then
-        print_error "Python 3.4+ required. Found: $python_version"
+    if [ "$major" -lt 3 ] || ([ "$major" -eq 3 ] && [ "$minor" -lt 8 ]); then
+        print_error "Python 3.8+ required. Found: $python_version"
         return 1
     fi
     
@@ -117,37 +131,102 @@ check_python() {
     return 0
 }
 
-# Install pirate-get
+# Install pirate-get using pipx (recommended for modern systems)
+install_with_pipx() {
+    local source="$1"
+    
+    print_step "Installing with pipx (isolated environment)..."
+    
+    if ! command_exists pipx; then
+        print_step "Installing pipx first..."
+        python3 -m pip install --user pipx 2>/dev/null || \
+        sudo apt-get install -y pipx 2>/dev/null || \
+        brew install pipx 2>/dev/null || \
+        { print_error "Could not install pipx"; return 1; }
+        
+        # Add pipx to PATH
+        python3 -m pipx ensurepath 2>/dev/null || pipx ensurepath 2>/dev/null || true
+    fi
+    
+    # Install pirate-get with pipx
+    if [ -d "$source" ]; then
+        # Local installation
+        pipx install "$source" --force
+    else
+        # From PyPI or git
+        pipx install "$source" --force
+    fi
+    
+    print_success "Installed with pipx"
+    print_step "Binary location: $(which pirate-get 2>/dev/null || echo '~/.local/bin/pirate-get')"
+}
+
+# Install pirate-get using venv (fallback)
+install_with_venv() {
+    local source="$1"
+    local venv_dir="${2:-$HOME/.local/share/pirate-get/venv}"
+    
+    print_step "Installing in virtual environment at $venv_dir..."
+    
+    # Create venv
+    mkdir -p "$(dirname "$venv_dir")"
+    python3 -m venv "$venv_dir"
+    
+    # Install in venv
+    "$venv_dir/bin/pip" install --upgrade pip
+    "$venv_dir/bin/pip" install "$source"
+    
+    # Create symlinks in ~/.local/bin
+    mkdir -p "$HOME/.local/bin"
+    ln -sf "$venv_dir/bin/pirate-get" "$HOME/.local/bin/pirate-get"
+    ln -sf "$venv_dir/bin/pirate-get-tui" "$HOME/.local/bin/pirate-get-tui" 2>/dev/null || true
+    
+    print_success "Installed in virtual environment"
+    print_warning "Make sure ~/.local/bin is in your PATH"
+}
+
+# Install pirate-get (main function)
 install_pirate_get() {
-    local install_type="${1:-user}"
-    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local install_method="${1:-auto}"
+    local source="${2:-.}"
+    local venv_path="$3"
     
     print_step "Installing pirate-get..."
     
-    case $install_type in
-        user)
-            # Install for current user
-            pip3 install --user -e "$script_dir"
-            print_success "Installed for current user"
-            print_warning "Make sure ~/.local/bin is in your PATH"
+    case $install_method in
+        auto)
+            # Auto-detect best method
+            if is_externally_managed; then
+                print_step "Detected externally managed Python (PEP 668)"
+                install_with_pipx "$source"
+            elif command_exists pipx; then
+                print_step "Using pipx (recommended)"
+                install_with_pipx "$source"
+            else
+                print_step "Using virtual environment"
+                install_with_venv "$source"
+            fi
             ;;
-        system)
-            # Install system-wide (requires sudo)
-            sudo pip3 install -e "$script_dir"
-            print_success "Installed system-wide"
+        pipx)
+            install_with_pipx "$source"
             ;;
         venv)
-            # Install in virtual environment
-            local venv_dir="${2:-$HOME/.venv/pirate-get}"
-            print_step "Creating virtual environment at $venv_dir"
-            python3 -m venv "$venv_dir"
-            source "$venv_dir/bin/activate"
-            pip install -e "$script_dir"
-            print_success "Installed in virtual environment: $venv_dir"
-            print_warning "Activate with: source $venv_dir/bin/activate"
+            install_with_venv "$source" "$venv_path"
+            ;;
+        pip)
+            # Force pip install (may break on modern systems)
+            print_warning "Using pip directly (may fail on externally managed environments)"
+            pip3 install --user "$source" || \
+            pip3 install --user --break-system-packages "$source"
+            ;;
+        system)
+            # System-wide install (requires sudo)
+            print_warning "Installing system-wide (requires sudo)"
+            sudo pip3 install "$source" --break-system-packages 2>/dev/null || \
+            sudo pip3 install "$source"
             ;;
         *)
-            print_error "Unknown install type: $install_type"
+            print_error "Unknown install method: $install_method"
             return 1
             ;;
     esac
@@ -157,18 +236,26 @@ install_pirate_get() {
 verify_installation() {
     print_step "Verifying installation..."
     
+    # Reload PATH
+    export PATH="$HOME/.local/bin:$PATH"
+    hash -r 2>/dev/null || true
+    
     if command_exists pirate-get; then
         print_success "pirate-get command available"
-        pirate-get --version
+        pirate-get --version 2>/dev/null || echo "  (version check skipped)"
     else
-        print_warning "pirate-get not in PATH. Try: pip3 show pirate-get"
+        print_warning "pirate-get not found in PATH"
+        print_step "Try: export PATH=\"\$HOME/.local/bin:\$PATH\""
+        print_step "Then run: pirate-get --help"
     fi
     
     # Test TUI import
     if python3 -c "from pirate.tui import PirateGetApp; print('TUI module OK')" 2>/dev/null; then
         print_success "TUI module working"
+    elif pipx runpip pirate-get show textual >/dev/null 2>&1; then
+        print_success "TUI dependencies installed"
     else
-        print_warning "TUI module not available. Install textual: pip3 install textual"
+        print_warning "TUI may need textual. Try: pipx inject pirate-get textual"
     fi
 }
 
@@ -177,44 +264,60 @@ usage() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  --user          Install for current user only (default)"
-    echo "  --system        Install system-wide (requires sudo)"
+    echo "  --auto          Auto-detect best install method (default)"
+    echo "  --pipx          Install with pipx (isolated, recommended)"
     echo "  --venv [PATH]   Install in virtual environment"
+    echo "  --pip           Use pip directly (legacy, may fail)"
+    echo "  --system        Install system-wide (requires sudo)"
     echo "  --deps-only     Only install system dependencies"
     echo "  --no-deps       Skip system dependencies"
+    echo "  --from-git      Install from GitHub repository"
     echo "  --help          Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0                      # User install with dependencies"
-    echo "  $0 --system             # System-wide install"
+    echo "  $0                      # Auto install (pipx or venv)"
+    echo "  $0 --pipx               # Force pipx install"
     echo "  $0 --venv ~/my-venv     # Install in custom venv"
-    echo "  $0 --no-deps --user     # User install, skip system deps"
+    echo "  $0 --from-git           # Install latest from GitHub"
+    echo ""
+    echo "After installation:"
+    echo "  pirate-get 'search'     # CLI search"
+    echo "  pirate-get --tui        # Launch TUI"
 }
 
 # Main
 main() {
-    local install_type="user"
+    local install_method="auto"
     local install_deps=true
     local deps_only=false
     local venv_path=""
+    local source="git+https://github.com/vidya-hub/pirate-get-tui.git"
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
-            --user)
-                install_type="user"
+            --auto)
+                install_method="auto"
                 shift
                 ;;
-            --system)
-                install_type="system"
+            --pipx)
+                install_method="pipx"
                 shift
                 ;;
             --venv)
-                install_type="venv"
+                install_method="venv"
                 if [[ -n "$2" && ! "$2" =~ ^-- ]]; then
                     venv_path="$2"
                     shift
                 fi
+                shift
+                ;;
+            --pip)
+                install_method="pip"
+                shift
+                ;;
+            --system)
+                install_method="system"
                 shift
                 ;;
             --deps-only)
@@ -223,6 +326,14 @@ main() {
                 ;;
             --no-deps)
                 install_deps=false
+                shift
+                ;;
+            --from-git)
+                source="git+https://github.com/vidya-hub/pirate-get-tui.git"
+                shift
+                ;;
+            --from-pypi)
+                source="pirate-get"
                 shift
                 ;;
             --help|-h)
@@ -255,11 +366,7 @@ main() {
     fi
     
     # Install pirate-get
-    if [ "$install_type" = "venv" ] && [ -n "$venv_path" ]; then
-        install_pirate_get "$install_type" "$venv_path"
-    else
-        install_pirate_get "$install_type"
-    fi
+    install_pirate_get "$install_method" "$source" "$venv_path"
     
     # Verify
     verify_installation
@@ -272,6 +379,9 @@ main() {
     echo "  pirate-get --tui             # Launch TUI"
     echo "  pirate-get-tui               # TUI directly"
     echo "  pirate-get -h                # Show help"
+    echo ""
+    echo "If command not found, run:"
+    echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
     echo ""
 }
 
