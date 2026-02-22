@@ -22,12 +22,14 @@ from textual.containers import Horizontal, Vertical, Container
 from textual.widgets import (
     Header,
     Footer,
-    DataTable,
+    ListView,
+    ListItem,
     Input,
     Select,
     Static,
     LoadingIndicator,
     Label,
+    ProgressBar,
 )
 from textual.worker import Worker, WorkerState
 
@@ -37,6 +39,7 @@ import pirate.local
 
 
 # ── Category / sort helpers ──────────────────────────────────────────────
+
 
 def _category_options():
     """Yield (label, value) pairs for the category Select widget."""
@@ -50,7 +53,75 @@ def _sort_options():
         yield (name, name)
 
 
+# ── Custom Widgets ──────────────────────────────────────────────────────
+
+
+class HealthBar(Static):
+    """Visual indicator for torrent health based on seeders."""
+
+    def __init__(self, seeders: int):
+        super().__init__()
+        self.seeders = seeders
+
+    def render(self):
+        width = 10
+        filled = min(
+            width, max(1, int(self.seeders / 10))
+        )  # 1 block per 10 seeders, max 10
+        color = "red"
+        if self.seeders >= 50:
+            color = "green"
+        elif self.seeders >= 10:
+            color = "yellow"
+
+        bar = "█" * filled + "░" * (width - filled)
+        return f"[{color}]{bar}[/]"
+
+
+class TorrentItem(ListItem):
+    """A card-like list item for a torrent result."""
+
+    def __init__(self, result: dict, index: int):
+        super().__init__()
+        self.result = result
+        self.index = index
+        self.add_class("torrent-item")
+
+    def compose(self) -> ComposeResult:
+        name = self.result.get("name", "Unknown")
+        size = self.result.get("size", "?")
+        seeders = int(self.result.get("seeders", 0))
+        leechers = int(self.result.get("leechers", 0))
+        uploaded = self.result.get("uploaded", "")
+        category = self.result.get("category", "")
+
+        # Calculate health color
+        health_color = "red"
+        if seeders >= 50:
+            health_color = "green"
+        elif seeders >= 10:
+            health_color = "yellow"
+
+        with Vertical(classes="card-container"):
+            with Horizontal(classes="card-header"):
+                yield Label(f"{self.index + 1}. {name}", classes="card-title")
+                yield Label(
+                    f"[{health_color}]Seeds: {seeders}[/] · Leech: {leechers}",
+                    classes="card-stats",
+                )
+
+            with Horizontal(classes="card-details"):
+                yield Label(f"💾 {size}", classes="detail-pill size")
+                yield Label(f"📅 {uploaded}", classes="detail-pill uploaded")
+                if category:
+                    yield Label(f"🏷️ {category}", classes="detail-pill category")
+
+            # Visual health bar at bottom of card
+            yield HealthBar(seeders)
+
+
 # ── The TUI App ──────────────────────────────────────────────────────────
+
 
 class PirateGetApp(App):
     """A TUI for searching and downloading torrents from The Pirate Bay."""
@@ -129,7 +200,7 @@ class PirateGetApp(App):
             )
 
         with Container(id="main-content"):
-            yield DataTable(id="results-table", cursor_type="row", zebra_stripes=True)
+            yield ListView(id="results-list")
             yield Static(
                 "🏴‍☠️  Search for torrents above, or press / to start typing",
                 id="empty-state",
@@ -145,13 +216,16 @@ class PirateGetApp(App):
     # ── Mount ────────────────────────────────────────────────────────
 
     def on_mount(self) -> None:
-        table = self.query_one("#results-table", DataTable)
-        table.add_columns("#", "Name", "Size", "Seeders", "Leechers", "Ratio", "Uploaded")
-        table.display = False
+        # Initial setup if needed
+        pass
 
         if self.initial_search:
             input_widget = self.query_one("#search-input", Input)
-            input_widget.value = " ".join(self.initial_search) if isinstance(self.initial_search, list) else self.initial_search
+            input_widget.value = (
+                " ".join(self.initial_search)
+                if isinstance(self.initial_search, list)
+                else self.initial_search
+            )
             self._do_search()
 
     # ── Search ───────────────────────────────────────────────────────
@@ -225,49 +299,30 @@ class PirateGetApp(App):
         self.call_from_thread(self._populate_table, results)
 
     def _populate_table(self, results: list) -> None:
-        table = self.query_one("#results-table", DataTable)
+        """Populate the ListView with TorrentCard widgets."""
+        list_view = self.query_one("#results-list", ListView)
         empty = self.query_one("#empty-state", Static)
 
-        table.clear()
+        list_view.clear()
 
         if not results:
-            table.display = False
+            list_view.display = False
             empty.update("No results found. Try a different search term.")
             empty.display = True
             self._set_status("No results")
             return
 
         empty.display = False
-        table.display = True
+        list_view.display = True
 
         for i, r in enumerate(results):
-            seeders = int(r.get("seeders", 0))
-            leechers = int(r.get("leechers", 0))
-            try:
-                ratio = f"{seeders / leechers:.1f}"
-            except ZeroDivisionError:
-                ratio = "∞"
-
-            name = r.get("name", "Unknown")
-            size = r.get("size", "?")
-            uploaded = r.get("uploaded", "")
-
-            table.add_row(
-                str(i),
-                name,
-                size,
-                str(seeders),
-                str(leechers),
-                ratio,
-                uploaded,
-                key=str(i),
-            )
+            list_view.append(TorrentItem(r, i))
 
         self._set_status(
             f"Found {len(results)} result{'s' if len(results) != 1 else ''}"
             + (f"  ·  Mirror: {self._current_mirror}" if self._current_mirror else "")
         )
-        table.focus()
+        list_view.focus()
 
     # ── Detail Panel ─────────────────────────────────────────────────
 
@@ -315,29 +370,29 @@ class PirateGetApp(App):
         if panel.has_class("visible"):
             self._hide_detail()
         else:
-            table = self.query_one("#results-table", DataTable)
-            if table.display:
-                table.focus()
+            list_view = self.query_one("#results-list", ListView)
+            if list_view.display:
+                list_view.focus()
 
     def action_cursor_down(self) -> None:
-        table = self.query_one("#results-table", DataTable)
-        if table.display and table.row_count > 0:
-            table.action_cursor_down()
+        list_view = self.query_one("#results-list", ListView)
+        if list_view.display and len(list_view.children) > 0:
+            list_view.action_cursor_down()
 
     def action_cursor_up(self) -> None:
-        table = self.query_one("#results-table", DataTable)
-        if table.display and table.row_count > 0:
-            table.action_cursor_up()
+        list_view = self.query_one("#results-list", ListView)
+        if list_view.display and len(list_view.children) > 0:
+            list_view.action_cursor_up()
 
     def action_cursor_top(self) -> None:
-        table = self.query_one("#results-table", DataTable)
-        if table.display and table.row_count > 0:
-            table.move_cursor(row=0)
+        list_view = self.query_one("#results-list", ListView)
+        if list_view.display and len(list_view.children) > 0:
+            list_view.index = 0
 
     def action_cursor_bottom(self) -> None:
-        table = self.query_one("#results-table", DataTable)
-        if table.display and table.row_count > 0:
-            table.move_cursor(row=table.row_count - 1)
+        list_view = self.query_one("#results-list", ListView)
+        if list_view.display and len(list_view.children) > 0:
+            list_view.index = len(list_view.children) - 1
 
     def action_copy_magnet(self) -> None:
         result = self._selected_result()
@@ -345,10 +400,17 @@ class PirateGetApp(App):
             return
         try:
             import pyperclip
+
             pyperclip.copy(result["magnet"])
-            self.notify(f"Copied magnet link for: {result['name']}", title="📋 Copied", timeout=3)
+            self.notify(
+                f"Copied magnet link for: {result['name']}",
+                title="📋 Copied",
+                timeout=3,
+            )
         except Exception as e:
-            self.notify(f"Copy failed: {e}", title="❌ Error", severity="error", timeout=5)
+            self.notify(
+                f"Copy failed: {e}", title="❌ Error", severity="error", timeout=5
+            )
 
     def action_open_browser(self) -> None:
         result = self._selected_result()
@@ -357,9 +419,12 @@ class PirateGetApp(App):
         url = result["magnet"]
         if self.open_command:
             from pirate.pirate import parse_cmd
+
             cmd = parse_cmd(self.open_command, url)
             subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            self.notify(f"Opened: {result['name']}", title="🚀 Custom Command", timeout=3)
+            self.notify(
+                f"Opened: {result['name']}", title="🚀 Custom Command", timeout=3
+            )
         else:
             webbrowser.open(url)
             self.notify(f"Opened: {result['name']}", title="🌐 Browser", timeout=3)
@@ -375,7 +440,9 @@ class PirateGetApp(App):
                 f.write(result["magnet"] + "\n")
             self.notify(f"Saved: {filepath}", title="💾 Magnet Saved", timeout=3)
         except OSError as e:
-            self.notify(f"Save failed: {e}", title="❌ Error", severity="error", timeout=5)
+            self.notify(
+                f"Save failed: {e}", title="❌ Error", severity="error", timeout=5
+            )
 
     def action_save_torrent(self) -> None:
         result = self._selected_result()
@@ -392,9 +459,17 @@ class PirateGetApp(App):
             torrent = pirate.torrent.get_torrent(result["info_hash"], self.timeout)
             with open(filepath, "wb") as f:
                 f.write(torrent)
-            self.call_from_thread(self.notify, f"Saved: {filepath}", title="💾 Torrent Saved", timeout=3)
+            self.call_from_thread(
+                self.notify, f"Saved: {filepath}", title="💾 Torrent Saved", timeout=3
+            )
         except Exception as e:
-            self.call_from_thread(self.notify, f"Download failed: {e}", title="❌ Error", severity="error", timeout=5)
+            self.call_from_thread(
+                self.notify,
+                f"Download failed: {e}",
+                title="❌ Error",
+                severity="error",
+                timeout=5,
+            )
 
     def action_send_transmission(self) -> None:
         result = self._selected_result()
@@ -408,7 +483,12 @@ class PirateGetApp(App):
             )
             self.notify(f"Sent: {result['name']}", title="📡 Transmission", timeout=3)
         except FileNotFoundError:
-            self.notify("transmission-remote not found", title="❌ Error", severity="error", timeout=5)
+            self.notify(
+                "transmission-remote not found",
+                title="❌ Error",
+                severity="error",
+                timeout=5,
+            )
 
     def action_refresh(self) -> None:
         self._do_search()
@@ -421,23 +501,27 @@ class PirateGetApp(App):
             self._set_status("No results to act on", "warning")
             return None
 
-        table = self.query_one("#results-table", DataTable)
-        if table.cursor_row is None or table.cursor_row >= len(self._results):
+        list_view = self.query_one("#results-list", ListView)
+        if list_view.index is None:
             self._set_status("No row selected", "warning")
             return None
 
-        return self._results[table.cursor_row]
+        return self._results[list_view.index]
 
     def _set_status(self, text: str, level: str = "info") -> None:
         bar = self.query_one("#status-bar", Static)
         prefix = {"info": "", "warning": "⚠ ", "error": "✗ "}.get(level, "")
         bar.update(f"{prefix}{text}")
 
-    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         """Auto-update detail panel when cursor moves, if it's open."""
         panel = self.query_one("#detail-panel")
         if panel.has_class("visible"):
             self._show_detail()
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        """Handle enter key on list item."""
+        self.action_toggle_detail()
 
 
 class _StatusPrinter:
@@ -449,6 +533,7 @@ class _StatusPrinter:
 
 
 # ── Entry point ──────────────────────────────────────────────────────────
+
 
 def run_tui(args):
     """Launch the TUI with the given (already combined) args namespace."""
