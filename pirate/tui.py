@@ -346,9 +346,9 @@ class PirateGetApp(App):
         try:
             import pyperclip
             pyperclip.copy(result["magnet"])
-            self._set_status(f"Copied magnet link for: {result['name']}")
+            self.notify(f"Copied magnet link for: {result['name']}", title="📋 Copied", timeout=3)
         except Exception as e:
-            self._set_status(f"Copy failed: {e}", "error")
+            self.notify(f"Copy failed: {e}", title="❌ Error", severity="error", timeout=5)
 
     def action_open_browser(self) -> None:
         result = self._selected_result()
@@ -359,10 +359,10 @@ class PirateGetApp(App):
             from pirate.pirate import parse_cmd
             cmd = parse_cmd(self.open_command, url)
             subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            self._set_status(f"Opened with custom command: {result['name']}")
+            self.notify(f"Opened: {result['name']}", title="🚀 Custom Command", timeout=3)
         else:
             webbrowser.open(url)
-            self._set_status(f"Opened in browser: {result['name']}")
+            self.notify(f"Opened: {result['name']}", title="🌐 Browser", timeout=3)
 
     def action_save_magnet(self) -> None:
         result = self._selected_result()
@@ -373,9 +373,9 @@ class PirateGetApp(App):
         try:
             with open(filepath, "w") as f:
                 f.write(result["magnet"] + "\n")
-            self._set_status(f"Saved magnet: {filepath}")
+            self.notify(f"Saved: {filepath}", title="💾 Magnet Saved", timeout=3)
         except OSError as e:
-            self._set_status(f"Save failed: {e}", "error")
+            self.notify(f"Save failed: {e}", title="❌ Error", severity="error", timeout=5)
 
     def action_save_torrent(self) -> None:
         result = self._selected_result()
@@ -392,9 +392,9 @@ class PirateGetApp(App):
             torrent = pirate.torrent.get_torrent(result["info_hash"], self.timeout)
             with open(filepath, "wb") as f:
                 f.write(torrent)
-            self.call_from_thread(self._set_status, f"Saved torrent: {filepath}")
+            self.call_from_thread(self.notify, f"Saved: {filepath}", title="💾 Torrent Saved", timeout=3)
         except Exception as e:
-            self.call_from_thread(self._set_status, f"Download failed: {e}", "error")
+            self.call_from_thread(self.notify, f"Download failed: {e}", title="❌ Error", severity="error", timeout=5)
 
     def action_send_transmission(self) -> None:
         result = self._selected_result()
@@ -406,9 +406,9 @@ class PirateGetApp(App):
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-            self._set_status(f"Sent to Transmission: {result['name']}")
+            self.notify(f"Sent: {result['name']}", title="📡 Transmission", timeout=3)
         except FileNotFoundError:
-            self._set_status("transmission-remote not found", "error")
+            self.notify("transmission-remote not found", title="❌ Error", severity="error", timeout=5)
 
     def action_refresh(self) -> None:
         self._do_search()
