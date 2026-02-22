@@ -199,6 +199,9 @@ def parse_args(args_in):
     parser.add_argument('-j', '--json',
                         action='store_true',
                         help='print results in JSON format to stdout')
+    parser.add_argument('--tui',
+                        action='store_true',
+                        help='launch interactive TUI mode')
     args = parser.parse_args(args_in)
 
     return args
@@ -495,7 +498,11 @@ def pirate_main(args):
 
 def main():
     args = combine_configs(load_config(), parse_args(sys.argv[1:]))
-    pirate_main(args)
+    if getattr(args, 'tui', False):
+        from pirate.tui import run_tui
+        run_tui(args)
+    else:
+        pirate_main(args)
 
 
 if __name__ == '__main__':

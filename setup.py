@@ -18,14 +18,16 @@ if __name__ == '__main__':
         author_email='me@viktorstanchev.com',
         license='AGPL',
         packages=find_packages(),
-        package_data={'': ["data/*", "tests/data/*"]},
+        package_data={'': ["data/*", "tests/data/*", "*.tcss"]},
         entry_points={
-            'console_scripts': ['pirate-get = pirate.pirate:main']
+            'console_scripts': ['pirate-get = pirate.pirate:main',
+                                'pirate-get-tui = pirate.tui:main']
         },
         install_requires=['colorama>=0.3.3',
                           'veryprettytable>=0.8.1',
-                          'pyperclip>=1.6.2'],
-        keywords=['torrent', 'magnet', 'download', 'tpb', 'client'],
+                          'pyperclip>=1.6.2',
+                          'textual>=1.0.0'],
+        keywords=['torrent', 'magnet', 'download', 'tpb', 'client', 'tui'],
         classifiers=[
             'Topic :: Utilities',
             'Topic :: Terminals',
