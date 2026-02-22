@@ -71,7 +71,7 @@ class PirateGetApp(App):
         Binding("t", "save_torrent", "Save .torrent", show=True),
         Binding("s", "save_magnet", "Save .magnet", show=True),
         Binding("x", "send_transmission", "Transmission", show=True),
-        Binding("r", "action_refresh", "Refresh", show=False),
+        Binding("r", "refresh", "Refresh", show=False),
         Binding("escape", "close_detail_or_blur", "Back", show=False),
     ]
 
