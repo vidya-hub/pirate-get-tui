@@ -134,20 +134,28 @@ check_python() {
 # Install pirate-get using pipx (recommended for modern systems)
 install_with_pipx() {
     local source="$1"
-    
     print_step "Installing with pipx (isolated environment)..."
-    
     if ! command_exists pipx; then
-        print_step "Installing pipx first..."
-        python3 -m pip install --user pipx 2>/dev/null || \
-        sudo apt-get install -y pipx 2>/dev/null || \
-        brew install pipx 2>/dev/null || \
-        { print_error "Could not install pipx"; return 1; }
+        print_step "pipx not found, attempting to install..."
+        # Try multiple methods to install pipx
+        if command_exists apt-get; then
+            sudo apt-get install -y pipx 2>/dev/null && pipx ensurepath 2>/dev/null
+        elif command_exists brew; then
+            brew install pipx 2>/dev/null && pipx ensurepath 2>/dev/null
+        elif command_exists dnf; then
+            sudo dnf install -y pipx 2>/dev/null && pipx ensurepath 2>/dev/null
+        fi
         
-        # Add pipx to PATH
-        python3 -m pipx ensurepath 2>/dev/null || pipx ensurepath 2>/dev/null || true
+        # Reload PATH to find pipx
+        export PATH="$HOME/.local/bin:$PATH"
+        hash -r 2>/dev/null || true
     fi
     
+    # Final check - if pipx still not available, return failure to trigger fallback
+    if ! command_exists pipx; then
+        print_warning "Could not install pipx, will use venv instead"
+        return 1
+    fi
     # Install pirate-get with pipx
     if [ -d "$source" ]; then
         # Local installation
@@ -156,7 +164,6 @@ install_with_pipx() {
         # From PyPI or git
         pipx install "$source" --force
     fi
-    
     print_success "Installed with pipx"
     print_step "Binary location: $(which pirate-get 2>/dev/null || echo '~/.local/bin/pirate-get')"
 }
@@ -198,7 +205,11 @@ install_pirate_get() {
             # Auto-detect best method
             if is_externally_managed; then
                 print_step "Detected externally managed Python (PEP 668)"
-                install_with_pipx "$source"
+                # Try pipx first, fall back to venv if it fails
+                if ! install_with_pipx "$source"; then
+                    print_step "Falling back to virtual environment..."
+                    install_with_venv "$source"
+                fi
             elif command_exists pipx; then
                 print_step "Using pipx (recommended)"
                 install_with_pipx "$source"
